@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login.jsx';
+import ForgotPassword from './pages/ForgotPassword.jsx'; // NEW
 import EmployeeHome from './pages/employee/Home.jsx';
 import EmployeeHistory from './pages/employee/History.jsx';
 import EmployeeExceptions from './pages/employee/Exceptions.jsx';
@@ -15,6 +16,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} /> {/* NEW */}
       <Route path="/" element={<Navigate to="/login" replace />} />
       
       {/* Employee routes */}

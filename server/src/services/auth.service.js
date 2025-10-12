@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import User from '../models/User.js';
 
 export async function register({ name, email, password, role = 'employee' }) {
@@ -55,4 +56,36 @@ export async function login({ email, password }) {
       sites: user.sites
     } 
   };
+}
+
+export async function createResetToken(email) {
+  const user = await User.findOne({ email, active: true });
+  if (!user) {
+    throw { status: 404, message: 'User not found' };
+  }
+  
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
+  
+  user.resetToken = resetToken;
+  user.resetTokenExpiry = resetTokenExpiry;
+  await user.save();
+  
+  return resetToken;
+}
+
+export async function updatePassword(token, newPassword) {
+  const user = await User.findOne({
+    resetToken: token,
+    resetTokenExpiry: { $gt: new Date() }
+  });
+  
+  if (!user) {
+    throw { status: 400, message: 'Invalid or expired reset token' };
+  }
+  
+  user.passwordHash = await bcrypt.hash(newPassword, 10);
+  user.resetToken = undefined;
+  user.resetTokenExpiry = undefined;
+  await user.save();
 }

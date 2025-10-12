@@ -4,6 +4,7 @@ import Layout from '../../components/Layout';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import GeofenceEditor from '../../components/map/GeofenceEditor';
 
 export default function Geofences() {
   const [geofences, setGeofences] = useState([]);
@@ -16,6 +17,7 @@ export default function Geofences() {
     lng: '',
     radius: '100'
   });
+  const [mapLocation, setMapLocation] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -34,6 +36,16 @@ export default function Geofences() {
     }
   };
 
+  const handleMapLocationChange = (location) => {
+    setMapLocation(location);
+    setFormData(prev => ({
+      ...prev,
+      lat: location.lat.toFixed(6),
+      lng: location.lng.toFixed(6),
+      radius: location.radius.toString()
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -49,12 +61,17 @@ export default function Geofences() {
         return;
       }
 
+      if (radius < 10 || radius > 5000) {
+        setError('Radius must be between 10m and 5000m');
+        return;
+      }
+
       const payload = {
         name: formData.name,
         type: formData.type,
         geometry: {
           type: 'Point',
-          coordinates: [lng, lat] // GeoJSON format: [longitude, latitude]
+          coordinates: [lng, lat] // GeoJSON: [longitude, latitude]
         },
         radiusMeters: radius,
         active: true
@@ -64,6 +81,7 @@ export default function Geofences() {
       setSuccess('Geofence created successfully!');
       setShowForm(false);
       setFormData({ name: '', type: 'circle', lat: '', lng: '', radius: '100' });
+      setMapLocation(null);
       fetchGeofences();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create geofence');
@@ -80,6 +98,12 @@ export default function Geofences() {
     } catch (err) {
       setError('Failed to delete geofence');
     }
+  };
+
+  const openFormWithLocation = () => {
+    setShowForm(true);
+    setError('');
+    setSuccess('');
   };
 
   if (loading) {
@@ -109,9 +133,18 @@ export default function Geofences() {
       {showForm && (
         <Card className="mb-6">
           <h3 className="text-lg font-semibold mb-4">Create New Geofence</h3>
+          
+          {/* Interactive Map Editor */}
+          <div className="mb-6">
+            <GeofenceEditor
+              onLocationChange={handleMapLocationChange}
+              initialRadius={parseInt(formData.radius) || 100}
+            />
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2">Name</label>
+              <label className="block text-sm font-medium mb-2">Geofence Name</label>
               <Input
                 type="text"
                 value={formData.name}
@@ -119,18 +152,6 @@ export default function Geofences() {
                 placeholder="Mall Entrance A"
                 required
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Type</label>
-              <select
-                className="input"
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-              >
-                <option value="circle">Circle</option>
-                <option value="polygon">Polygon (coming soon)</option>
-              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -143,6 +164,8 @@ export default function Geofences() {
                   onChange={(e) => setFormData({ ...formData, lat: e.target.value })}
                   placeholder="19.089340"
                   required
+                  readOnly={!!mapLocation}
+                  className={mapLocation ? 'bg-slate-100' : ''}
                 />
               </div>
               <div>
@@ -154,26 +177,43 @@ export default function Geofences() {
                   onChange={(e) => setFormData({ ...formData, lng: e.target.value })}
                   placeholder="72.878176"
                   required
+                  readOnly={!!mapLocation}
+                  className={mapLocation ? 'bg-slate-100' : ''}
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Radius (meters)</label>
+              <label className="block text-sm font-medium mb-2">
+                Radius (meters) - Current: {formData.radius}m
+              </label>
               <Input
-                type="number"
+                type="range"
+                min="10"
+                max="500"
+                step="5"
                 value={formData.radius}
                 onChange={(e) => setFormData({ ...formData, radius: e.target.value })}
-                placeholder="100"
-                required
+                className="w-full"
               />
+              <div className="flex justify-between text-xs text-slate-500 mt-1">
+                <span>10m</span>
+                <span>250m</span>
+                <span>500m</span>
+              </div>
             </div>
 
-            <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg">
-              💡 <strong>Tip:</strong> You can use Google Maps to find coordinates. Right-click on a location and select the coordinates to copy them.
-            </div>
+            {!mapLocation && (
+              <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                ⚠️ <strong>Click on the map above</strong> to select a location, then drag to set the radius.
+              </div>
+            )}
 
-            <Button type="submit" className="w-full">
+            <Button 
+              type="submit" 
+              className="w-full"
+              disabled={!formData.lat || !formData.lng}
+            >
               Create Geofence
             </Button>
           </form>
@@ -181,27 +221,33 @@ export default function Geofences() {
       )}
       
       <Card>
+        <h3 className="text-lg font-semibold mb-4">Existing Geofences</h3>
         {geofences.length === 0 ? (
           <p className="text-slate-600">No geofences configured. Create one to get started.</p>
         ) : (
           <div className="space-y-3">
             {geofences.map(fence => (
-              <div key={fence._id} className="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0">
-                <div>
-                  <p className="font-medium">{fence.name}</p>
-                  <p className="text-sm text-slate-600 capitalize">
-                    {fence.type} • {fence.radiusMeters ? `${fence.radiusMeters}m radius` : 'Polygon'}
-                  </p>
+              <div key={fence._id} className="flex items-start justify-between border-b border-slate-100 pb-3 last:border-0">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-medium">{fence.name}</p>
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full capitalize">
+                      {fence.type}
+                    </span>
+                  </div>
                   {fence.geometry?.coordinates && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      📍 {fence.geometry.coordinates[1]?.toFixed(6)}, {fence.geometry.coordinates[0]?.toFixed(6)}
-                    </p>
+                    <div className="text-xs text-slate-600 space-y-1">
+                      <p>📍 {fence.geometry.coordinates[1]?.toFixed(6)}, {fence.geometry.coordinates[0]?.toFixed(6)}</p>
+                      {fence.radiusMeters && (
+                        <p>⭕ Radius: {fence.radiusMeters}m ({(fence.radiusMeters * 3.28084).toFixed(0)} feet)</p>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="flex gap-2">
                   <button 
                     onClick={() => handleDelete(fence._id)}
-                    className="text-sm text-rose-600 hover:text-rose-700 font-medium"
+                    className="text-sm text-rose-600 hover:text-rose-700 font-medium px-3 py-1 hover:bg-rose-50 rounded"
                   >
                     Delete
                   </button>
@@ -213,10 +259,10 @@ export default function Geofences() {
       </Card>
 
       <Card className="mt-6 bg-blue-50 border-blue-200">
-        <h4 className="font-semibold text-blue-900 mb-2">📍 Example Locations</h4>
+        <h4 className="font-semibold text-blue-900 mb-2">📍 Quick Reference Locations</h4>
         <div className="text-sm text-blue-800 space-y-1">
-          <p><strong>Mumbai Airport:</strong> Lat: 19.089340, Lng: 72.878176</p>
-          <p><strong>Delhi Airport:</strong> Lat: 28.556160, Lng: 77.100280</p>
+          <p><strong>Mumbai Airport T2:</strong> Lat: 19.089340, Lng: 72.878176</p>
+          <p><strong>Delhi Airport T3:</strong> Lat: 28.556160, Lng: 77.100280</p>
           <p><strong>Bangalore Airport:</strong> Lat: 13.198890, Lng: 77.705610</p>
         </div>
       </Card>
