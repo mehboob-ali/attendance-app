@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import useGeolocation from '../../hooks/useGeolocation';
 import api from '../../lib/api';
-import { getUser } from '../../lib/auth';
 import Layout from '../../components/Layout';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
-import { MapContainer, TileLayer, Circle, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Circle, Marker, Popup, ZoomControl, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -28,16 +27,90 @@ const userIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-function LiveMap({ userLocation, geofences }) {
-  if (!userLocation || !geofences || geofences.length === 0) {
-    return null;
+// Current location button (bottom right)
+function LocateButton({ onLocate }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    const locateControl = L.control({ position: 'bottomright' });
+    
+    locateControl.onAdd = () => {
+      const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      div.innerHTML = `
+        <a href="#" title="Go to my location" style="
+          width: 40px;
+          height: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: white;
+          text-decoration: none;
+          font-size: 20px;
+          color: #333;
+          border-radius: 4px;
+          box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+        ">📍</a>
+      `;
+      
+      L.DomEvent.on(div, 'click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        L.DomEvent.preventDefault(e);
+        if (onLocate) onLocate();
+      });
+      
+      return div;
+    };
+    
+    locateControl.addTo(map);
+    
+    return () => {
+      locateControl.remove();
+    };
+  }, [map, onLocate]);
+  
+  return null;
+}
+
+// Map component that centers on user when location updates
+function MapUpdater({ center }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (center) {
+      map.setView(center, map.getZoom());
+    }
+  }, [center, map]);
+  
+  return null;
+}
+
+function LiveMap({ userLocation, geofences, onLocate }) {
+  if (!userLocation) {
+    return (
+      <div className="h-80 rounded-xl overflow-hidden border-2 border-slate-300 bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-slate-600 mb-2">📍 Getting your location...</p>
+          <button 
+            onClick={onLocate}
+            className="text-sm text-brand-600 hover:text-brand-700 underline"
+          >
+            Click here if location doesn't load
+          </button>
+        </div>
+      </div>
+    );
   }
 
-  // Use first geofence as center, or user location
-  const firstGeo = geofences[0];
-  const center = firstGeo?.geometry?.coordinates 
-    ? [firstGeo.geometry.coordinates[1], firstGeo.geometry.coordinates[0]]
-    : [userLocation.lat, userLocation.lng];
+  if (geofences.length === 0) {
+    return (
+      <div className="h-80 rounded-xl overflow-hidden border-2 border-slate-300 bg-slate-50 flex items-center justify-center">
+        <p className="text-slate-600">⚠️ No work areas configured. Contact your admin.</p>
+      </div>
+    );
+  }
+
+  // Always use user's actual location as center
+  const center = [userLocation.lat, userLocation.lng];
 
   return (
     <div className="h-80 rounded-xl overflow-hidden border-2 border-slate-300 shadow-lg">
@@ -45,15 +118,20 @@ function LiveMap({ userLocation, geofences }) {
         center={center}
         zoom={17}
         className="h-full w-full"
-        scrollWheelZoom={false}
+        zoomControl={false}
+        scrollWheelZoom={true}
+        dragging={true}
       >
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         />
+        <ZoomControl position="topright" />
+        <LocateButton onLocate={onLocate} />
+        <MapUpdater center={center} />
         
         {/* User's current location */}
-        <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon}>
+        <Marker position={center} icon={userIcon}>
           <Popup>
             <strong>Your Location</strong><br />
             Accuracy: {Math.round(userLocation.accuracy)}m
@@ -62,7 +140,7 @@ function LiveMap({ userLocation, geofences }) {
 
         {/* User's accuracy circle */}
         <Circle
-          center={[userLocation.lat, userLocation.lng]}
+          center={center}
           radius={userLocation.accuracy}
           pathOptions={{
             color: '#3b82f6',
@@ -109,10 +187,11 @@ export default function Home() {
   const [geofences, setGeofences] = useState([]);
   const [distance, setDistance] = useState(null);
   const [isInside, setIsInside] = useState(false);
-  const user = getUser();
+  const [canPunch, setCanPunch] = useState(false);
 
   useEffect(() => {
     fetchUserGeofences();
+    get(); // Get location on mount
   }, []);
 
   useEffect(() => {
@@ -124,49 +203,63 @@ export default function Home() {
   const fetchUserGeofences = async () => {
     try {
       const { data } = await api.get('/geofences');
-      // In production, filter by user's assigned sites
       setGeofences(data.filter(g => g.active));
     } catch (err) {
       console.error('Failed to fetch geofences:', err);
     }
   };
 
-  const calculateDistance = () => {
-    if (!coords || geofences.length === 0) return;
+const calculateDistance = () => {
+  if (!coords || geofences.length === 0) {
+    setDistance(null);
+    setIsInside(false);
+    setCanPunch(false);
+    return;
+  }
 
-    // Calculate distance to nearest geofence
-    let minDistance = Infinity;
-    let inside = false;
+  // Check accuracy first
+  const hasGoodAccuracy = coords.accuracy <= 100;
 
-    geofences.forEach(geo => {
-      if (geo.type === 'circle' && geo.geometry?.coordinates) {
-        const [geoLng, geoLat] = geo.geometry.coordinates;
-        const R = 6371e3; // Earth radius in meters
-        const φ1 = (coords.lat * Math.PI) / 180;
-        const φ2 = (geoLat * Math.PI) / 180;
-        const Δφ = ((geoLat - coords.lat) * Math.PI) / 180;
-        const Δλ = ((geoLng - coords.lng) * Math.PI) / 180;
+  let minDistance = Infinity;
+  let inside = false;
 
-        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-                  Math.cos(φ1) * Math.cos(φ2) *
-                  Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const distanceToCenter = R * c;
+  geofences.forEach(geo => {
+    if (geo.type === 'circle' && geo.geometry?.coordinates) {
+      const [geoLng, geoLat] = geo.geometry.coordinates;
+      const R = 6371e3; // Earth radius in meters
+      const φ1 = (coords.lat * Math.PI) / 180;
+      const φ2 = (geoLat * Math.PI) / 180;
+      const Δφ = ((geoLat - coords.lat) * Math.PI) / 180;
+      const Δλ = ((geoLng - coords.lng) * Math.PI) / 180;
 
-        const distanceToBoundary = distanceToCenter - geo.radiusMeters;
-        
-        if (distanceToCenter <= geo.radiusMeters) {
-          inside = true;
-        }
+      const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distanceToCenter = R * c;
 
-        if (Math.abs(distanceToBoundary) < minDistance) {
-          minDistance = Math.abs(distanceToBoundary);
-        }
+      const distanceToBoundary = distanceToCenter - geo.radiusMeters;
+      
+      // NEW: Only consider "inside" if the GPS accuracy circle fits entirely within the geofence
+      // This means: distance to center + GPS accuracy margin must be <= geofence radius
+      if (distanceToCenter + coords.accuracy <= geo.radiusMeters) {
+        inside = true;
       }
-    });
 
-    setDistance(Math.round(minDistance));
-    setIsInside(inside);
+      if (Math.abs(distanceToBoundary) < minDistance) {
+        minDistance = Math.abs(distanceToBoundary);
+      }
+    }
+  });
+
+  setDistance(Math.round(minDistance));
+  setIsInside(inside);
+  setCanPunch(inside && hasGoodAccuracy);
+};
+
+
+  const handleLocate = () => {
+    get();
   };
 
   const onPunch = async (type) => {
@@ -193,7 +286,6 @@ export default function Home() {
       const typeLabel = type === 'in' ? 'Clock In' : type === 'out' ? 'Clock Out' : 'Break';
       setStatus({ ok: true, msg: `${typeLabel} recorded successfully ✅` });
       
-      // Refresh geofences after punch
       fetchUserGeofences();
     } catch (err) {
       setStatus({ 
@@ -205,20 +297,30 @@ export default function Home() {
     }
   };
 
+  // Determine status for display
+  const getStatus = () => {
+    if (!coords) return { color: 'amber', text: '⏳ Getting location...' };
+    if (coords.accuracy > 100) return { color: 'amber', text: '⚠️ GPS accuracy too low' };
+    if (isInside) return { color: 'emerald', text: '✅ You are inside the work area' };
+    return { color: 'amber', text: '⚠️ You are outside the work area' };
+  };
+
+  const statusInfo = getStatus();
+
   return (
     <Layout title="Attendance">
       <div className="max-w-4xl mx-auto space-y-6">
         
         {/* Location Status Card */}
-        <Card className={isInside ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}>
+        <Card className={`bg-${statusInfo.color}-50 border-${statusInfo.color}-200`}>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xl font-semibold">
-              {isInside ? '✅ You are inside the work area' : '⚠️ You are outside the work area'}
+              {statusInfo.text}
             </h2>
             <button 
-              onClick={get}
+              onClick={handleLocate}
               disabled={loading}
-              className="text-sm text-slate-600 hover:text-slate-900 underline"
+              className="text-sm px-3 py-1 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
               {loading ? '⏳ Updating...' : '🔄 Refresh Location'}
             </button>
@@ -228,8 +330,12 @@ export default function Home() {
             <div className="bg-white rounded-lg p-3 border border-slate-200">
               <div className="text-xs text-slate-500 mb-1">Your Status</div>
               <div className="font-semibold text-sm">
-                {isInside ? (
-                  <span className="text-emerald-600">✅ Inside</span>
+                {canPunch ? (
+                  <span className="text-emerald-600">✅ Ready</span>
+                ) : coords && coords.accuracy > 100 ? (
+                  <span className="text-rose-600">❌ Poor GPS</span>
+                ) : isInside ? (
+                  <span className="text-amber-600">⚠️ GPS Low</span>
                 ) : (
                   <span className="text-amber-600">⚠️ Outside</span>
                 )}
@@ -267,7 +373,7 @@ export default function Home() {
             <div className="bg-white rounded-lg p-3 border border-slate-200">
               <div className="text-xs text-slate-500 mb-1">Can Punch</div>
               <div className="font-semibold text-sm">
-                {isInside && coords && coords.accuracy <= 100 ? (
+                {canPunch ? (
                   <span className="text-emerald-600">✅ Yes</span>
                 ) : (
                   <span className="text-rose-600">❌ No</span>
@@ -284,60 +390,49 @@ export default function Home() {
         </Card>
 
         {/* Map */}
-        {coords && geofences.length > 0 && (
-          <Card>
-            <h3 className="text-lg font-semibold mb-3">Your Location on Map</h3>
-            <LiveMap userLocation={coords} geofences={geofences} />
-            <div className="mt-3 flex items-start gap-4 text-xs text-slate-600">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                <span>Your Location (blue marker)</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full border-2 border-blue-500 bg-blue-50"></div>
-                <span>GPS Accuracy Circle</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span>Allowed Work Area (green circle)</span>
-              </div>
+        <Card>
+          <h3 className="text-lg font-semibold mb-3">Your Location on Map</h3>
+          <LiveMap 
+            userLocation={coords} 
+            geofences={geofences}
+            onLocate={handleLocate}
+          />
+          <div className="mt-3 flex flex-wrap items-start gap-4 text-xs text-slate-600">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+              <span>Your Location</span>
             </div>
-          </Card>
-        )}
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-full border-2 border-blue-500 bg-blue-50"></div>
+              <span>GPS Accuracy</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+              <span>Work Area</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span>📍 = Find Current Location</span>
+            </div>
+          </div>
+        </Card>
 
         {/* Clock In/Out Card */}
         <Card>
           <h2 className="text-xl font-semibold mb-2">Clock In/Out</h2>
           <p className="text-sm text-slate-600 mb-4">
-            You must be inside the green work area circle to clock in or out.
+            You must be inside the green work area with good GPS accuracy to clock in or out.
           </p>
-          
-          <div className="flex flex-wrap gap-2 mb-4">
-            {loading && <Badge color="blue">⏳ Getting location...</Badge>}
-            {coords && (
-              <>
-                <Badge color={coords.accuracy <= 50 ? 'green' : coords.accuracy <= 100 ? 'amber' : 'red'}>
-                  📍 GPS: {Math.round(coords.accuracy)}m accuracy
-                </Badge>
-                {isInside ? (
-                  <Badge color="green">✅ Inside work area</Badge>
-                ) : (
-                  <Badge color="red">⚠️ Outside work area - Move {distance}m closer</Badge>
-                )}
-              </>
-            )}
-          </div>
           
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <Button 
               onClick={() => onPunch('in')} 
-              disabled={punching || loading || !isInside || (coords && coords.accuracy > 100)}
+              disabled={punching || loading || !canPunch}
             >
               {punching ? '⏳' : '✅'} Clock In
             </Button>
             <Button 
               onClick={() => onPunch('break')} 
-              disabled={punching || loading || !isInside || (coords && coords.accuracy > 100)}
+              disabled={punching || loading || !canPunch}
               className="bg-amber-600 hover:bg-amber-700"
             >
               {punching ? '⏳' : '☕'} Break
@@ -345,26 +440,39 @@ export default function Home() {
             <Button 
               variant="secondary"
               onClick={() => onPunch('out')}
-              disabled={punching || loading || !isInside || (coords && coords.accuracy > 100)}
+              disabled={punching || loading || !canPunch}
               className="md:col-span-1 col-span-2"
             >
               {punching ? '⏳' : '🚪'} Clock Out
             </Button>
           </div>
 
-          {!isInside && coords && (
-            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-              <strong>⚠️ You are {distance}m away from the work area.</strong>
-              <br />
-              Please move closer to the mall entrance to clock in. The buttons will enable automatically when you're inside.
+          {/* Show accuracy warning if GPS is bad */}
+          {coords && coords.accuracy > 100 && (
+            <div className="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700">
+              <strong>❌ GPS accuracy too low: {Math.round(coords.accuracy)}m (Need ≤100m)</strong>
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>Enable Wi-Fi (helps location even without connection)</li>
+                <li>Move near a window or outside</li>
+                <li>Enable "High Accuracy" mode in phone settings</li>
+                <li>Wait 10-30 seconds for GPS to stabilize</li>
+              </ul>
             </div>
           )}
 
-          {coords && coords.accuracy > 100 && (
-            <div className="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700">
-              <strong>❌ GPS accuracy too low ({Math.round(coords.accuracy)}m)</strong>
+          {/* Show distance warning if accuracy is good but you're outside */}
+          {coords && coords.accuracy <= 100 && !isInside && distance !== null && (
+            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+              <strong>⚠️ You are {distance}m away from the work area.</strong>
               <br />
-              Move to an area with better GPS signal (near windows/outdoors) or enable Wi-Fi for better accuracy.
+              Please move closer. The green circle on the map shows where you need to be.
+            </div>
+          )}
+
+          {/* Show success message when ready */}
+          {canPunch && (
+            <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700">
+              <strong>✅ All conditions met!</strong> You can now clock in/out.
             </div>
           )}
         </Card>
@@ -381,11 +489,11 @@ export default function Home() {
         <Card className="bg-blue-50 border-blue-200">
           <h4 className="font-semibold text-blue-900 mb-2">ℹ️ How to Use</h4>
           <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-            <li>Allow location permissions when prompted</li>
-            <li>The map shows your location (blue) and work area (green circle)</li>
-            <li>Move inside the green circle to enable clock buttons</li>
-            <li>GPS accuracy must be under 100m for reliable punches</li>
-            <li>If accuracy is poor, move near windows or enable Wi-Fi</li>
+            <li>Click 📍 button on map to center on your location</li>
+            <li>GPS accuracy must be ≤100m (enable Wi-Fi for best results)</li>
+            <li>You must be inside the green circle (work area)</li>
+            <li>When both conditions are met, buttons will enable automatically</li>
+            <li>Status cards above show exactly what you need to fix</li>
           </ol>
         </Card>
       </div>

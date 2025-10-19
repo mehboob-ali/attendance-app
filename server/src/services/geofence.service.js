@@ -1,4 +1,5 @@
 import Geofence from '../models/Geofence.js';
+import User from '../models/User.js';
 
 export async function listGeofences() {
   return Geofence.find({ active: true }).lean();
@@ -13,5 +14,18 @@ export async function updateGeofence(id, payload) {
 }
 
 export async function removeGeofence(id) {
-  return Geofence.findByIdAndUpdate(id, { active: false }, { new: true });
+  // Mark geofence as inactive
+  const geofence = await Geofence.findByIdAndUpdate(
+    id, 
+    { active: false }, 
+    { new: true }
+  );
+  
+  // Remove this geofence from all employee assignments
+  await User.updateMany(
+    { sites: id },
+    { $pull: { sites: id } }
+  );
+  
+  return geofence;
 }

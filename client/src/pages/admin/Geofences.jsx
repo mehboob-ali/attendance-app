@@ -46,6 +46,20 @@ export default function Geofences() {
     }));
   };
 
+  // NEW: Handle slider change and update map
+const handleRadiusChange = (newRadius) => {
+  setFormData(prev => ({ ...prev, radius: newRadius }));
+  
+  // Update mapLocation to trigger re-render of JUST the circle
+  if (mapLocation) {
+    setMapLocation({
+      ...mapLocation,
+      radius: parseInt(newRadius)
+    });
+  }
+};
+
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -71,7 +85,7 @@ export default function Geofences() {
         type: formData.type,
         geometry: {
           type: 'Point',
-          coordinates: [lng, lat] // GeoJSON: [longitude, latitude]
+          coordinates: [lng, lat]
         },
         radiusMeters: radius,
         active: true
@@ -89,14 +103,14 @@ export default function Geofences() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this geofence?')) return;
+    if (!confirm('Are you sure you want to delete this geofence? It will be removed from all employee assignments.')) return;
 
     try {
       await api.delete(`/geofences/${id}`);
-      setSuccess('Geofence deleted successfully!');
+      setSuccess('Geofence deleted and removed from all employees!');
       fetchGeofences();
     } catch (err) {
-      setError('Failed to delete geofence');
+      setError('Failed to delete geofence: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -138,7 +152,8 @@ export default function Geofences() {
           <div className="mb-6">
             <GeofenceEditor
               onLocationChange={handleMapLocationChange}
-              initialRadius={parseInt(formData.radius) || 100}
+              externalRadius={parseInt(formData.radius) || 100}
+
             />
           </div>
 
@@ -185,7 +200,7 @@ export default function Geofences() {
 
             <div>
               <label className="block text-sm font-medium mb-2">
-                Radius (meters) - Current: {formData.radius}m
+                Radius (meters) - Current: <span className="font-bold text-brand-600">{formData.radius}m</span>
               </label>
               <Input
                 type="range"
@@ -193,19 +208,22 @@ export default function Geofences() {
                 max="500"
                 step="5"
                 value={formData.radius}
-                onChange={(e) => setFormData({ ...formData, radius: e.target.value })}
+                onChange={(e) => handleRadiusChange(e.target.value)}
                 className="w-full"
               />
               <div className="flex justify-between text-xs text-slate-500 mt-1">
-                <span>10m</span>
-                <span>250m</span>
-                <span>500m</span>
+                <span>10m (33ft)</span>
+                <span>250m (820ft)</span>
+                <span>500m (1640ft)</span>
               </div>
+              <p className="text-xs text-slate-600 mt-2">
+                💡 The circle on the map updates as you move the slider
+              </p>
             </div>
 
             {!mapLocation && (
               <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                ⚠️ <strong>Click on the map above</strong> to select a location, then drag to set the radius.
+                ⚠️ <strong>Click on the map above</strong> to select a location first.
               </div>
             )}
 
