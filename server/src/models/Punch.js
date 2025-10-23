@@ -9,7 +9,7 @@ const punchSchema = new mongoose.Schema({
   },
   type: { 
     type: String, 
-    enum: ['in', 'out', 'break'], 
+    enum: ['in', 'out'], 
     required: true 
   },
   timestamp: { 

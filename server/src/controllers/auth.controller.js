@@ -18,14 +18,26 @@ export const postLogin = async (req, res, next) => {
   }
 };
 
+
+import { employeeSignup } from '../services/auth.service.js';
+
+export const postEmployeeSignup = async (req, res, next) => {
+  try {
+    const result = await employeeSignup(req.body);
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 export const requestPasswordReset = async (req, res, next) => {
   try {
     const { email } = req.body;
-    const resetToken = await createResetToken(email);
-    // In production, send this via email
+    await createResetToken(email);
+    // In production, send token via email. Do not expose in API response
     res.json({ 
-      message: 'Reset token generated',
-      resetToken // Remove this in production, send via email only
+      message: 'If that account exists, a reset email has been sent.'
     });
   } catch (error) {
     next(error);

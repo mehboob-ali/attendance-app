@@ -10,6 +10,7 @@ export default function ForgotPassword() {
   const [step, setStep] = useState(1); // 1: email, 2: token+password
   const [token, setToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -20,8 +21,8 @@ export default function ForgotPassword() {
     setError('');
 
     try {
-      const { data } = await api.post('/auth/request-reset', { email });
-      setSuccess(`Reset token: ${data.resetToken} (In production, this would be emailed)`);
+      await api.post('/auth/request-reset', { email });
+      setSuccess('If that account exists, a reset email has been sent.');
       setStep(2);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to request reset');
@@ -34,6 +35,12 @@ export default function ForgotPassword() {
     e.preventDefault();
     setLoading(true);
     setError('');
+
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match');
+      setLoading(false);
+      return;
+    }
 
     try {
       await api.post('/auth/reset-password', { token, newPassword });
@@ -101,6 +108,17 @@ export default function ForgotPassword() {
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+                minLength={6}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Confirm Password</label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 placeholder="••••••••"
                 minLength={6}

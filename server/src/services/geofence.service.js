@@ -21,6 +21,10 @@ export async function removeGeofence(id) {
     { new: true }
   );
   
+    if (!geofence) {
+    throw { status: 404, message: 'Geofence not found' };
+  }
+  
   // Remove this geofence from all employee assignments
   await User.updateMany(
     { sites: id },

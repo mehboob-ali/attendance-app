@@ -8,7 +8,9 @@ export function isInsidePolygon(point, polygon) {
 export function distanceMeters(pointA, pointB) {
   const from = turf.point(pointA);
   const to = turf.point(pointB);
-  return turf.distance(from, to, { units: 'meters' });
+  // turf.distance returns kilometers by default; request km and convert to meters
+  const km = turf.distance(from, to, { units: 'kilometers' });
+  return km * 1000;
 }
 
 export function isInsideCircle(point, center, radiusMeters) {

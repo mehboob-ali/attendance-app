@@ -1,5 +1,5 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { getUser, clearSession } from '../lib/auth';
+import { Link, useNavigate } from "react-router-dom";
+import { getUser, clearSession } from "../lib/auth";
 
 export default function Layout({ children, title }) {
   const user = getUser();
@@ -7,20 +7,24 @@ export default function Layout({ children, title }) {
 
   const handleLogout = () => {
     clearSession();
-    navigate('/login');
+    navigate("/login");
   };
 
-  const navLinks = user?.role === 'admin' ? [
-    { to: '/admin', label: 'Dashboard' },
-    { to: '/admin/geofences', label: 'Geofences' },
-    { to: '/admin/employees', label: 'Employees' },
-    { to: '/admin/exceptions', label: 'Exceptions' },
-    { to: '/admin/reports', label: 'Reports' }
-  ] : [
-    { to: '/employee', label: 'Home' },
-    { to: '/employee/history', label: 'History' },
-    { to: '/employee/exceptions', label: 'Exceptions' }
-  ];
+  const navLinks =
+    user?.role === "admin"
+      ? [
+          { to: "/admin", label: "Dashboard" },
+          { to: "/admin/approvals", label: "Approvals" },
+          { to: "/admin/geofences", label: "Geofences" },
+          { to: "/admin/employees", label: "Employees" },
+          { to: "/admin/exceptions", label: "Exceptions" },
+          { to: "/admin/reports", label: "Reports" },
+        ]
+      : [
+          { to: "/employee", label: "Home" },
+          { to: "/employee/history", label: "History" },
+          { to: "/employee/exceptions", label: "Exceptions" },
+        ];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -28,9 +32,11 @@ export default function Layout({ children, title }) {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
-              <h1 className="text-xl font-bold text-slate-900">Attendance System</h1>
+              <h1 className="text-xl font-bold text-slate-900">
+                Attendance System
+              </h1>
               <div className="hidden md:flex gap-4">
-                {navLinks.map(link => (
+                {navLinks.map((link) => (
                   <Link
                     key={link.to}
                     to={link.to}
@@ -53,7 +59,7 @@ export default function Layout({ children, title }) {
           </div>
         </div>
       </nav>
-      
+
       <main className="max-w-7xl mx-auto px-4 py-8">
         {title && <h2 className="text-2xl font-bold mb-6">{title}</h2>}
         {children}

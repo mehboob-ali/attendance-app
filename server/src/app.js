@@ -14,16 +14,33 @@ import employeeRoutes from './routes/employee.routes.js';
 import errorHandler from './middleware/error.js';
 
 dotenv.config();
+// Fail fast on critical env
+if (!process.env.JWT_SECRET) {
+  // eslint-disable-next-line no-console
+  console.error('Missing JWT_SECRET environment variable');
+  process.exit(1);
+}
 connectDB();
 
 const app = express();
 
 // Security & parsing
+app.set('trust proxy', true);
 app.use(helmet());
-app.use(cors({ 
-  origin: '*', 
-  credentials: true 
-}));
+
+// Restrict CORS: allow configured origins; avoid '*' with credentials
+const allowedOrigins = (process.env.CORS_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean);
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true); // allow same-origin/non-browser
+    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+};
+app.use(cors(corsOptions));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '1mb' }));
 

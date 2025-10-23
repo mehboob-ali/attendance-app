@@ -276,14 +276,6 @@ const handleRadiusChange = (newRadius) => {
         )}
       </Card>
 
-      <Card className="mt-6 bg-blue-50 border-blue-200">
-        <h4 className="font-semibold text-blue-900 mb-2">📍 Quick Reference Locations</h4>
-        <div className="text-sm text-blue-800 space-y-1">
-          <p><strong>Mumbai Airport T2:</strong> Lat: 19.089340, Lng: 72.878176</p>
-          <p><strong>Delhi Airport T3:</strong> Lat: 28.556160, Lng: 77.100280</p>
-          <p><strong>Bangalore Airport:</strong> Lat: 13.198890, Lng: 77.705610</p>
-        </div>
-      </Card>
     </Layout>
   );
 }

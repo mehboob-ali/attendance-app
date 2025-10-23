@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
-import api from '../../lib/api';
-import Layout from '../../components/Layout';
-import Card from '../../components/ui/Card';
-import Button from '../../components/ui/Button';
-import Badge from '../../components/ui/Badge';
+import { useEffect, useState } from "react";
+import api from "../../lib/api";
+import Layout from "../../components/Layout";
+import Card from "../../components/ui/Card";
+import Button from "../../components/ui/Button";
+import Badge from "../../components/ui/Badge";
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
@@ -11,8 +11,8 @@ export default function Employees() {
   const [loading, setLoading] = useState(true);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [selectedSites, setSelectedSites] = useState([]);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -23,82 +23,98 @@ export default function Employees() {
     setLoading(true);
     try {
       const [empRes, geoRes] = await Promise.all([
-        api.get('/employees'),
-        api.get('/geofences')
+        api.get("/employees"),
+        api.get("/geofences"),
       ]);
-      
-      console.log('Employees loaded:', empRes.data);
-      console.log('Geofences loaded:', geoRes.data);
-      
+
+      console.log("Employees loaded:", empRes.data);
+      console.log("Geofences loaded:", geoRes.data);
+
       setEmployees(empRes.data);
       setGeofences(geoRes.data);
-      setError('');
+      setError("");
     } catch (err) {
-      console.error('Fetch error:', err);
-      setError('Failed to load data: ' + (err.response?.data?.message || err.message));
+      console.error("Fetch error:", err);
+      setError(
+        "Failed to load data: " + (err.response?.data?.message || err.message)
+      );
     } finally {
       setLoading(false);
     }
   };
 
   const openAssignModal = (employee) => {
-    console.log('Opening modal for employee:', employee);
+    console.log("Opening modal for employee:", employee);
     setSelectedEmployee(employee);
-    
-    // Extract site IDs from the employee's sites array
-    const siteIds = employee.sites?.map(s => {
-      // Handle both populated and unpopulated sites
-      return typeof s === 'string' ? s : (s._id || s);
-    }) || [];
-    
-    console.log('Pre-selected sites:', siteIds);
+
+    // Extract site IDs - handle both populated objects and string IDs
+
+    const siteIds =
+      employee.sites
+        ?.map((s) => {
+          if (typeof s === "string") {
+            return s;
+          } else if (s && s._id) {
+            return typeof s._id === "string" ? s._id : s._id.toString();
+          } else if (s && typeof s === "object" && s.id) {
+            return s.id;
+          }
+          return null;
+        })
+        .filter(Boolean) || [];
+
+    console.log("Pre-selected sites:", siteIds);
     setSelectedSites(siteIds);
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
   };
 
   const handleSiteToggle = (siteId) => {
-    setSelectedSites(prev => {
-      const newSelection = prev.includes(siteId) 
-        ? prev.filter(id => id !== siteId)
+    setSelectedSites((prev) => {
+      const newSelection = prev.includes(siteId)
+        ? prev.filter((id) => id !== siteId)
         : [...prev, siteId];
-      console.log('Sites selection changed:', newSelection);
+      console.log("Sites selection changed:", newSelection);
       return newSelection;
     });
   };
 
   const handleAssignSites = async () => {
     if (!selectedEmployee) {
-      setError('No employee selected');
+      setError("No employee selected");
       return;
     }
 
     setSaving(true);
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
 
     try {
-      console.log('Assigning sites:', { 
-        employeeId: selectedEmployee._id, 
-        sites: selectedSites 
+      console.log("Assigning sites:", {
+        employeeId: selectedEmployee._id,
+        sites: selectedSites,
       });
 
-      const response = await api.put(`/employees/${selectedEmployee._id}/sites`, { 
-        sites: selectedSites 
-      });
-      
-      console.log('Assignment successful:', response.data);
-      
+      const response = await api.put(
+        `/employees/${selectedEmployee._id}/sites`,
+        {
+          sites: selectedSites,
+        }
+      );
+
+      console.log("Assignment successful:", response.data);
+
       setSuccess(`Sites assigned successfully to ${selectedEmployee.name}!`);
       setSelectedEmployee(null);
       setSelectedSites([]);
-      
+
       // Refresh the employee list
       await fetchData();
     } catch (err) {
-      console.error('Assignment error:', err);
-      console.error('Error response:', err.response?.data);
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to assign sites';
+      console.error("Assignment error:", err);
+      console.error("Error response:", err.response?.data);
+      const errorMsg =
+        err.response?.data?.message || err.message || "Failed to assign sites";
       setError(errorMsg);
     } finally {
       setSaving(false);
@@ -122,7 +138,7 @@ export default function Employees() {
           ❌ {error}
         </div>
       )}
-      
+
       {success && (
         <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm">
           ✅ {success}
@@ -133,7 +149,9 @@ export default function Employees() {
         {employees.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-slate-600 mb-4">No employees found.</p>
-            <p className="text-sm text-slate-500">Run the seed script to create demo employees.</p>
+            <p className="text-sm text-slate-500">
+              Run the seed script to create demo employees.
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -147,8 +165,11 @@ export default function Employees() {
                 </tr>
               </thead>
               <tbody>
-                {employees.map(emp => (
-                  <tr key={emp._id} className="border-b border-slate-100 last:border-0">
+                {employees.map((emp) => (
+                  <tr
+                    key={emp._id}
+                    className="border-b border-slate-100 last:border-0"
+                  >
                     <td className="py-3 pr-4 font-medium">{emp.name}</td>
                     <td className="py-3 pr-4 text-slate-600">{emp.email}</td>
                     <td className="py-3 pr-4">
@@ -156,16 +177,18 @@ export default function Employees() {
                         <div className="flex flex-wrap gap-1">
                           {emp.sites.map((s, idx) => (
                             <Badge key={s._id || s || idx} color="blue">
-                              {s.name || 'Unknown Site'}
+                              {s.name || "Unknown Site"}
                             </Badge>
                           ))}
                         </div>
                       ) : (
-                        <span className="text-slate-400 text-xs">No sites assigned</span>
+                        <span className="text-slate-400 text-xs">
+                          No sites assigned
+                        </span>
                       )}
                     </td>
                     <td className="py-3 pr-4">
-                      <button 
+                      <button
                         onClick={() => openAssignModal(emp)}
                         className="text-sm text-brand-600 hover:text-brand-700 font-medium hover:bg-brand-50 px-3 py-1 rounded transition-colors"
                       >
@@ -187,22 +210,20 @@ export default function Employees() {
             <h3 className="text-lg font-semibold mb-4">
               Assign Sites to {selectedEmployee.name}
             </h3>
-            
+
             {geofences.length === 0 ? (
               <div className="text-center py-6">
                 <p className="text-slate-600 text-sm mb-4">
                   ⚠️ No geofences available. Create geofences first.
                 </p>
-                <Button onClick={() => setSelectedEmployee(null)}>
-                  Close
-                </Button>
+                <Button onClick={() => setSelectedEmployee(null)}>Close</Button>
               </div>
             ) : (
               <>
                 <div className="space-y-2 mb-4">
-                  {geofences.map(geo => (
-                    <label 
-                      key={geo._id} 
+                  {geofences.map((geo) => (
+                    <label
+                      key={geo._id}
                       className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
                     >
                       <input
@@ -222,14 +243,16 @@ export default function Employees() {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button 
+                  <Button
                     onClick={handleAssignSites}
                     disabled={saving}
                     className="flex-1"
                   >
-                    {saving ? 'Saving...' : `Save (${selectedSites.length} selected)`}
+                    {saving
+                      ? "Saving..."
+                      : `Save (${selectedSites.length} selected)`}
                   </Button>
-                  <Button 
+                  <Button
                     variant="secondary"
                     onClick={() => setSelectedEmployee(null)}
                     disabled={saving}
